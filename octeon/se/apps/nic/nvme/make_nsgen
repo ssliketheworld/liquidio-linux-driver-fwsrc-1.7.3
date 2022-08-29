@@ -1,0 +1,8 @@
+#!/bin/bash
+
+#
+# Make nsgen utility
+#
+
+gcc -o nsgen nsgen.c -I./include/ -I$OCTEON_ROOT/executive \
+  -I../config/ -DOCTEON_MODEL=OCTEON_CN73XX

@@ -1,0 +1,80 @@
+LiquidIO SE firmware for CN73XX NVMe controller.
+===============================================
+Release 0.0.6
+=============
+* Fixes for most of the bugs found in v0.0.5
+* Added NVME Stats framework and host utility.
+* Modified error handling on internal resource crunch to gracefully abort the command
+
+Known issues:
+* Intermitted crash in NVME+SATA mode while running tnvme test suite several times
+
+Release 0.0.5
+=============
+* support for nvme cn73xx pass 1.1
+* Verified compare & fused commmand functionality
+* Error reporting in linux block layer and other bug fixes
+
+Known issues:
+* Few intermittent failures with tnvme test suite when running on cn73xx pass 1.1
+
+Release 0.0.4
+=============
+* Support for presenting upto 255 SATA disks as NVMe name spaces.
+* Abort handling is verified.
+* Interrupt coalescing is enabled by default and a boot paramenter is
+  provided to disable it.
+
+Know issues:
+* Async event registration and event reporting is not complete.
+
+Release 0.0.3
+=============
+* NVME+SATA support. i.e Support for presenting SATA disks as NVME name spaces.
+* Support for discontiguous IO queues is added.
+* Added support for interrupt coalescing admin commands (set_features admin cmd).
+
+Know issues:
+* Abort handling is not verified.
+
+Release 0.0.2
+=============
+* Support for SRIOV is added
+* namespace and mapping generation tool to generate name spaces and map NS to
+  controllers is included
+  is included.
+* Default namespace configuration is, 1 NS per NVMe controller for first 32
+  controller i.e 1PF and 32VFs.
+* No support for interrupt coalescing nvme admin commands.
+* Support async event registration and log page reporting is there, but right
+  now no event/errors are posted.
+* Support for IO sizes > 8KB is verified.
+
+Know issues:
+* Doesn't have support for discontiguous queue though the support is
+reported in nvme cap register.
+* Abort handling is not verified.
+
+Release 0.0.1
+=============
+* Early access 73xx nvme release.
+* Supports PF2 alone, doesn't claim support for SRIOV on PF2.
+* NVMe firmware is verified with CentOS/RHEL 7.0 and Ubuntu 14.04.2 but
+  expected to work with all standard stock drivers of Linux and windows flavors.
+* Presents two name spaces of size 100MB each. README.txt includes the steps to
+  change default configuration, recompile and reload the firmware.
+* Name spaces provides the data integrity in a single boot but are volatile.
+  Disk data is not preserved with firmware reboots.
+* Name spaces are verified for stability with tools like fio, dd at block sizes
+  512, 4K and 8KB. Minimal verification is done at block sizes > 8KB.
+* Data integrity is verified with mkfs.ext4, mount, file copy and umounts.
+* No support for interrupt coalescing nvme admin commands.
+* No support for thin provisioning and T10 DIFF.
+* No support for discontiguous IO queues and SG list for IO commands. Supports
+  PRP lists alone.
+
+Know issues:
+- Async event registration and log page reporting are not verified.
+- IO errors are observed at block sizes > 8KB.
+- IO Abort handling is not verfied.
+- UUIDs are not implemented for name spaces.

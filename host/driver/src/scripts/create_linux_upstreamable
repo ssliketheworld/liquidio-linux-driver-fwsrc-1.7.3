@@ -1,0 +1,109 @@
+#!/bin/bash
+#
+# Prepare Linux upstreamble image
+#
+
+#
+# We start with a completely clean directory so that we don't inadvertently merge old
+# result files, then copy the entire linux driver tree over. Finally, we perform a complete
+# replacement of all Cavium Macros in the source to create a tree that meets the upstreaming
+# requirements of Linux.
+#
+
+echo "Creating upstream copy directory"
+rm -rf $LINUX_HOST_DRIVER_SRC_UPSTREAM
+mkdir -p $LINUX_HOST_DRIVER_SRC_UPSTREAM
+if ./in_git_repo.pl; then
+	echo "Git repository detected."
+	do_stash=0
+	if ! git diff-files --quiet --ignore-submodules --
+	then
+		do_stash=1
+	fi
+	if ! git diff-index --cached --quiet HEAD --ignore-submodules --
+	then
+		do_stash=1
+	fi
+
+	if [ $do_stash = 1 ]
+	then
+		git stash
+		pushd $LINUX_SRC
+		git archive --format=tar stash@{0} | tar -C $LINUX_HOST_DRIVER_SRC_UPSTREAM -xf -
+		popd
+		mkdir $LINUX_HOST_DRIVER_SRC_UPSTREAM/osi
+		pushd $OSI_HOST_DRIVER_SRC
+		git archive --format=tar stash@{0} | tar -C $LINUX_HOST_DRIVER_SRC_UPSTREAM/osi -xf -
+		popd
+		git stash pop -q
+	else
+		pushd $LINUX_SRC
+		git archive --format=tar HEAD cavium | tar -C $LINUX_HOST_DRIVER_SRC_UPSTREAM -xf -
+		popd
+		pushd $OSI_HOST_DRIVER_SRC/..
+		git archive --format=tar HEAD osi | tar -C $LINUX_HOST_DRIVER_SRC_UPSTREAM -xf -
+		popd
+	fi
+	pushd $LINUX_HOST_DRIVER_SRC_UPSTREAM
+else
+	pushd $LINUX_HOST_DRIVER_SRC_UPSTREAM
+	svn export $LINUX_SRC/cavium
+	svn export $OSI_HOST_DRIVER_SRC
+fi
+
+# flatten OSI
+mv osi/* cavium/liquidio
+rm -rf osi
+rm -rf windows
+rm -rf NVMe rx_zerocp_centos7.2/ ebpf_mips64/
+cd cavium/liquidio/
+rm -fr Makefile.ipsec liquidio_com.c 
+rm -rf cavium-list.h cvm_linux_types.h cavium_sysdep.h linux_sysdep.h README.kbuild
+rm -rf lio_dcb_main.c lio_dcb_main.h lio_dcbnl.c lio_dcb_stub.c liquidio_common_dcb.h 
+#Remove 78XX related files for current upstreaming
+rm -rf cn78*
+rm -rf lio_zerocp_buf.*
+rm -rf lio_zerocp_if.c
+
+#CONFIG_DCB not needed for upstreaming
+#In Kbuild.pf also replaced to avoid the compilation
+sed -i 's/CONFIG_DCB/CAVIUM_ONLY_CONFIG_DCB/g' *
+popd
+
+cp ../linux/driver.dox ../linux_upstream
+
+#
+# Remove Cavium specific code sections from the upstream source
+#
+
+if [ "$#" -eq 0 ];  then
+	echo "Removing CAVIUM_ONLY #ifdefs, filtering source, and kernel version checks"
+	script -c "./process-ifdefs.pl $LINUX_HOST_DRIVER_SRC_UPSTREAM --defined __linux_upstream__=1 \
+	    --defined LINUX_VERSION_CODE=0xffffff --defined RHEL_RELEASE_CODE=0x0000 \
+	    --undefined CAVIUM_BYTE_ALLOC_RXBUFS" process-ifdefs.log
+else
+	echo "Removing CAVIUM_ONLY #ifdefs and filtering source, but leaving kernel version checks"
+	script -c "./process-ifdefs.pl $LINUX_HOST_DRIVER_SRC_UPSTREAM --defined __linux_upstream__=1 \
+	    --undefined CAVIUM_BYTE_ALLOC_RXBUFS" process-ifdefs.log
+fi
+
+#
+# Replace macros in the upstream tree
+#
+echo "Replacing Cavium specific macros in upstream source"
+./replacemacros $LINUX_HOST_DRIVER_SRC_UPSTREAM
+
+#
+# Remove any extra empty lines (from ifdef'd-out code)
+# For now, restrict this to 'liquidio' directory.
+# NOTE: the 'sed' line merges multiple blank lines into a single line.
+#
+grep "Processing file:" process-ifdefs.log | grep "cavium.liquidio" | while read line; do
+	file=`echo ${line}|awk '{print $3}'|sed 's/\r//'`
+	sed '/^$/N;/^\n$/D' ${file} > __out.tmp
+	diff ${file} __out.tmp > /dev/null 2>&1
+	if [ $? -eq 1 ]; then
+		cp -f -p __out.tmp ${file}
+	fi
+done
+

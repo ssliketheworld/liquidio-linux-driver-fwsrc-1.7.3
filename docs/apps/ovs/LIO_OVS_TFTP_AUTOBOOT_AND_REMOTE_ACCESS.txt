@@ -1,0 +1,344 @@
+---------------------------------------
+CONTENTS
+---------------------------------------
+
+* Contents
+* Pre-requisites
+* Procedure to load OVS firmware via TFTP
+   - Preparing the TFTP server
+   - Setup OCTEON-SDK environment
+   - Preparing LiquidIO for TFTP load
+      A. Using oct-pci* utils from the host
+      B. Using Serial Console
+* Host driver installation
+* Login to Octlinux from Host
+* LiquidIO OVS Network Interfaces in Octlinux
+* Enabling Remote access to Octlinux
+    A. When eth0 and eth1 in Octlinux are not in a bond.
+    B. When eth0 and eth1 are bonded.
+
+
+NOTE: Commands listed in this document use different prompts based on where
+      they need to be run:
+      "cmd" when run on the host command line,
+      "boot" when run on the OCTEON bootloader, 
+      "oct" when run on OCTEON Linux kernel (octlinux).
+
+
+---------------------------------------
+* Pre-Requisites
+---------------------------------------
+
+Follow README for the hardware and software requirement to install
+LiquidIO OVS software.
+
+-----------------------------------------
+* Procedure to load OVS firmware via TFTP
+-----------------------------------------
+
+Note: This document assumes Port0 of the LiquidIO is connected to the network.
+
+        +-----------------------+              +----------------------+
+        |   TFTP Server         |              |   TFTP Client        |
+        |           +---------- |              |-----------+          |
+        |           |           |              |LiquidIO II|          |
+        |           |           |              |           |          |
+        |           | 10G NIC   |              |           |          | 
+        |           |           |              |           |          |
+        |           |      eth0 |<============>| eth0      |          |
+        |           |      eth1 |              | eth1      |          |
+        |           |           |              |           |          |
+        |           |           |              |           |          |
+        +-----------------------+              +----------------------+
+                  Figure 1: TFTP server and client connection setup
+
+-------------------------
+Preparing the TFTP server
+-------------------------
+
+1. Ensure that has tftp service is running on the server.
+2. Unzip LiquidIO OVS 1.7.0 zip package   
+   cmd> unzip liquidio-linux-ovs26-fwbin-1.7.0.zip
+3. Copy the vmlinux.64 from the unzipped package to TFTP server root directory.
+   cmd> cd liquidio-linux-ovs26-fwbin-1.7.0
+   cmd> cp bin/octeon/vmlinux.64 <TFTP_SERVER_ROOT_DIRECTORY>
+4. Start the TFTP server.
+
+--------------------------------  
+Setup OCTEON-SDK environment
+--------------------------------
+
+On the host with LiquidIO installed, set up OCTEON-SDK environment before
+programming the card for auto boot.
+
+   cmd> export OCTEON_ROOT=/path/to/OCTEON-SDK
+   cmd> cd $OCTEON_ROOT
+   cmd> source ./env-setup OCTEON_CN23XX
+#### Ensure that correct OCTEON SDK build is set
+   cmd> oct-version
+    Cavium Inc. OCTEON SDK version 3.1.2-p11.1, build 601
+
+
+
+---------------------------------
+Preparing LiquidIO for TFTP load
+---------------------------------
+
+LiquidIO can be programmed to autoload the OVS firmware in 2 ways:
+
+A) Using oct-pci* utils from the host
+---------------------------------------
+
+Setup the OCTEON-SDK environment as described in above section.
+
+1. Reset the card and interrupt autoboot
+   cmd> oct-pci-reset; oct-pci-bootcmd " "
+
+2. Program the card for TFTP boot
+   Replace 1.0.0.2 with the IP address you wish to assign the card
+   cmd> oct-pci-bootcmd "setenv ipaddr 1.0.0.2"
+
+   Replace 1.0.0.1 with TFTP server IP.
+   cmd> oct-pci-bootcmd "setenv serverip 1.0.0.1"
+
+   Program the Gateway IP, if applicable.
+   cmd> oct-pci-bootcmd "setenv gateway 1.0.0.1"
+
+   cmd> oct-pci-bootcmd "setenv bootcmd 'tftpboot 0 vmlinux.64; setexpr n10 \$(numcores) - 6; setexpr lxn \$(n10) / 4; setexpr acn \$(n10) - \$(lxn); bootoctlinux 0 numcores=0x\$(lxn) mem=1392M'"
+
+   NOTE: You should provide the relative path to vmlinux.64 in TFTP server in 
+         the above command.
+
+   Recommended delay before the boot is 5 secs
+   cmd> oct-pci-bootcmd "setenv bootdelay 5"
+   cmd> oct-pci-bootcmd "saveenv"
+   cmd> oct-pci-reset
+
+After reboot, LiquidIO will fetch the OVS firmware from tftp server and boot 
+the OCTEON SoC in the LiquidIO adapter.
+
+
+
+B) Using Serial Console
+-----------------------
+
+Setup the OCTEON-SDK environment as described above.
+
+1. Access liquidIO Serial console:
+   LiquidIO serial USB will be detected as /dev/ttyUSBX, where X is the
+   tty port number.
+
+   Use minicom to connect to LiquidIO Serial console
+   cmd> minicom /dev/ttyUSB0
+
+   Setup serial console settings as follows:
+   Bps/Par/Bits          : 115200 8N1
+   Hardware Flow Control : No
+   Software Flow Control : No
+
+2. From host, reset the card and interrupt autoboot
+   cmd> oct-pci-reset; oct-pci-bootcmd " "
+
+3. Set following environment variables in the serial console prompt:
+   boot> setenv ipaddr 1.0.0.2
+   boot> setenv gateway 1.0.0.1
+   boot> setenv serverip 1.0.0.1
+   boot> ping 1.0.0.1 
+
+        You should see output similar to that shown below.
+		Node 0 Interface 2 has 2 ports (XFI)
+		Node 0 Interface 3 has 128 ports (NPI)
+		Node 0 Interface 4 has 4 ports (LOOP)
+		Using octeth0 device
+		host 1.0.0.1 is alive
+
+   boot> setenv bootcmd 'tftpboot 0 vmlinux.64; setexpr n10 $(numcores) - 6; setexpr lxn $(n10) / 4; setexpr acn $(n10) - $(lxn); bootoctlinux 0 numcores=0x$(lxn) mem=1392M'
+
+   NOTE: You should provide the relative path to vmlinux.64 in TFTP server in 
+         the above command.
+
+   Recommended delay before the boot is 5 secs
+   boot> setenv bootdelay 5
+   boot> saveenv
+
+   Reset the card from the host
+   cmd> oct-pci-reset
+
+After reboot, LiquidIO will fetch the OVS firmware from tftp server and boot 
+the OCTEON SoC in the LiquidIO adapter.
+
+
+
+
+--------------------------
+* Host driver installation
+--------------------------
+
+Follow instructions in the "Building and Installation" section in README
+provided with the LiquidIO OVS Release Version 1.7.0 package
+(liquidio-linux-ovs26-fwbin-x.y.z.zip OR liquidio-linux-ovs26-fwsrc-x.y.z.zip)
+to install liquidio OVS driver. 
+
+When firmware is programmed to boot via tftp, the host driver must be loaded as below:
+
+   cmd> modprobe liquidio fw_type=auto
+
+that is, pass fw_type parameter to modprobe as 'auto' instead of 'ovs'.
+
+
+
+-----------------------------
+* Login to Octlinux from Host
+-----------------------------
+
+1) SSH into Octlinux from the host where LiquidIO OVS driver is installed
+
+Follow instructions in the sub-section "Host-Octlinux communication" under the 
+section "LiquidIO OVS Configuration" in the 1.7.0 release README to ssh into 
+Octlinux from the host.
+
+
+---------------------------------------------
+* LiquidIO OVS Network Interfaces in Octlinux
+---------------------------------------------
+
+After host driver is loaded, Octlinux on the LiquidIO adapter registers 
+following network interfaces:
+
+	eth0: LiquidIO OVS physical port 0.
+
+	eth1: LiquidIO OVS physical port 1.
+
+	enpXsYfZ: Here X, Y and Z refer to the PCIe Bus, Device and Function
+	          numbers respectively for each LiquidIO PCIe virtual function.
+
+	mgmt0: Used for Host-Octlinux communication. This interface is not used
+	       for OVS configurations and is only used for Host-Octlinux 
+	       internal communication.
+
+	wire0-mgmt0: A virtual port that enables remote access to Octlinux using
+	             eth0 when physical ports 'eth0 and eth1' are not bonded.
+
+	wire0-mgmt0: A virtual port that enables remote access to Octlinux using
+	             eth1 when physical ports 'eth0 and eth1' are not bonded.
+
+
+	NOTE: All Ethernet interfaces listed above are setup on the LiquidIO 
+	      adapter and not on the host OS.
+
+
+
+--------------------------------------------
+* Enabling Remote network access to Octlinux
+--------------------------------------------
+
+A. When eth0 and eth1 are not in a bond
+---------------------------------------
+
+When the physical ports are not part of a bond, wire0-mgmt0 or wire1-mgmt0
+interface can be used for remote login to Octlinux. As mentioned above,
+wire0-mgmt0 is used for remote connections over eth0 and wire1-mgmt0 for remote
+connections over eth1.
+
+wire<N>-mgmt0 interfaces can be assigned a static IP by using 'ifconfig'
+utility as following 
+  oct> ifconfig wire0-mgmt0 A.B.C.D netmask X.Y.Z.W
+
+Or, to assign a DHCP IP address to these interfaces, use 'udhcpc' utility
+  oct> udhcpc  -i wire0-mgmt0
+
+
+
+B. When eth0 and eth1 are bonded
+--------------------------------
+
+The remote access to Octlinux over wire<N>-mgmt0 interfaces may face 
+interruption when the physical ports eth0 and eth1 are bonded. This is
+because under load-balance situations the traffic, may go out of one interface 
+(eth0 for example) and received over the other (eth1, for instance). To deal 
+with these situation, a separate OVS bridge is created and OVS patch port is 
+used to allow remote access to Octlinux.
+
+Below is an example bond 'ovs-bond' between eth0 and eth1 that exists on OVS
+bridge 'ovs-br'.
+
+oct> ovs-vsctl show
+1850aa87-04b5-4c5b-8dad-4d9406a2f11b
+    Bridge ovs-br
+        Port ovs-br
+            Interface ovs-br
+                type: internal
+        Port ovs-bond
+            Interface "eth0"
+            Interface "eth1"
+
+
+oct> ovs-appctl bond/show ovs-bond
+
+---- ovs-bond ----
+bond_mode: active-backup
+bond may use recirculation: no, Recirc-ID : -1
+bond-hash-basis: 0
+updelay: 0 ms
+downdelay: 0 ms
+lacp_status: off
+active slave mac: be:8a:bb:5f:89:c9(eth0)
+
+slave eth0: enabled
+        active slave
+        may_enable: true
+
+slave eth1: disabled
+        may_enable: false
+
+
+
+To allow remote access, follow these steps:
+
+1. Create a new bridge 'mgmt-br'. This bridge will carry the remote access 
+   traffic to octlinux.
+
+  oct> ovs-vsctl add-br mgmt-br
+ 
+2. Create and add a patch port to each of ovs-br and mgmt-br.
+
+  Create a patch port ovs-patch which talks to mgmt-patch
+ 
+  oct> ovs-vsctl add-port ovs-br ovs-patch -- set interface ovs-patch type=patch options:peer=mgmt-patch 
+
+3. Create a patch port mgmt-patch which talks to ovs-patch
+
+  oct> ovs-vsctl add-port mgmt-br mgmt-patch -- set interface mgmt-patch type=patch options:peer=ovs-patch
+
+
+The resulting OVS bridge configuration would look like this:
+
+  oct> ovs-vsctl show
+  1850aa87-04b5-4c5b-8dad-4d9406a2f11b
+    Bridge ovs-br
+        Port ovs-br
+            Interface ovs-br
+                type: internal
+        Port ovs-bond
+            Interface "eth0"
+            Interface "eth1"
+        Port ovs-patch
+            Interface ovs-patch
+                type: patch
+                options: {peer=mgmt-patch}
+    Bridge mgmt-br
+        Port mgmt-br
+            Interface mgmt-br
+                type: internal
+        Port mgmt-patch
+            Interface mgmt-patch
+                type: patch
+                options: {peer=ovs-patch}
+
+3. After it is created, 'mgmt-br' can be assigned a static OR DHCP IP address,
+   that is,
+
+
+  oct> ifconfig mgmt-br A.B.C.D netmask X.Y.Z.W
+Or,
+  oct> udhcpc  -i mgmt-br

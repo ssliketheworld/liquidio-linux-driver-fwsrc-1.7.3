@@ -1,0 +1,60 @@
+#
+# Makefile for Liquid IO Server Adapters
+#
+
+CDIR = ../../../osi/
+NETLINK = $(LIQUIDIO_ROOT)/host/apps/ipsec/lio_netxfrm
+ICMSG = $(LIQUIDIO_ROOT)/host/apps/messaging/x86_icmsg
+IPSEC_OFFLOAD =  $(LIQUIDIO_ROOT)/host/apps/ipsec/ipsec-offload
+
+.NOTPARALLEL:
+
+.PHONY:	all clean partial_clean ipsec_modules ipsec_modules_cleanup
+
+THISMAKE := $(MAKE) -f $(lastword $(MAKEFILE_LIST))
+
+ipsec_modules: 
+	@cd $(NETLINK);$(MAKE) all
+	@cd $(ICMSG);$(MAKE) all
+ifdef OVS_IPSEC
+	@cd $(PF_KEY);$(MAKE) OVS_IPSEC=1 all
+endif
+	@cd $(IPSEC_OFFLOAD);$(MAKE) all
+
+ipsec_modules_cleanup: 
+	@cd $(NETLINK);$(MAKE) clean
+	@cd $(ICMSG);$(MAKE) clean
+ifdef OVS_IPSEC
+	@cd $(PF_KEY);$(MAKE) clean
+endif
+	@cd $(IPSEC_OFFLOAD);$(MAKE) clean
+
+all:
+	$(THISMAKE) liquidio.ko
+	@$(THISMAKE) ipsec_modules
+	$(THISMAKE) liquidio_vf.ko
+	@$(THISMAKE) ipsec_modules VF=1
+
+clean:	partial_clean
+	rm -rf *.ko
+	@$(THISMAKE) ipsec_modules_cleanup
+
+partial_clean:
+	rm -rf .*.cmd *.mod.* *.o .tmp_versions
+	rm -f modules.order Module.symvers *.ko.unsigned
+	rm -f $(CDIR).*.cmd $(CDIR)*.o
+	rm -f Kbuild
+
+.PHONY: liquidio.ko liquidio_vf.ko
+
+liquidio.ko:
+	$(MAKE) partial_clean
+	ln -s Kbuild.pf Kbuild
+	$(MAKE) -C /lib/modules/`uname -r`/build V=1 M=`pwd` modules
+	@$(THISMAKE) ipsec_modules
+
+liquidio_vf.ko:
+	$(MAKE) partial_clean
+	ln -s Kbuild.vf Kbuild
+	$(MAKE) -C /lib/modules/`uname -r`/build M=`pwd` modules
+	@$(THISMAKE) ipsec_modules VF=1

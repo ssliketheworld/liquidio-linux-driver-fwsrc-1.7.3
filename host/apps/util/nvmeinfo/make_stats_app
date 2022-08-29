@@ -1,0 +1,2 @@
+gcc -o get_stats get_nvme_stats.c -I$LIQUIDIO_ROOT/octeon/se/apps/nic/nvme/include
+

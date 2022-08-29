@@ -1,0 +1,393 @@
+#!/bin/bash
+#
+# perf_flows is a tool for spawning multiple netperf flows and measuring
+# performance. See usage below.
+#
+
+#addr threads #traffic_type runtime #msg_list
+#########Set any defaults here############
+addr="172.16.0.241"
+msg_list="60k"
+threads=4
+runtime=30
+traffic_type=TCP_STREAM
+collect_driver_stats=0
+
+usage() {
+	echo 
+	echo "Usage: $0 [-a '<ipaddr1> ...'] [-f num_of_flows]"
+	echo "		  [-t traffic_type] [-l time_in_secs]"
+	echo "		  [-m '<msgsize1> ...'][-h]"
+	echo 
+	echo "-a list of ip addresses to send traffic to on each iteration"
+	echo "-f number of flows to send to each ip address"
+	echo "-t traffic type for each flow, per netperf"
+	echo "-l time to run each iteration"
+	echo "-m list of local message sizes to be used on each iteration."
+	echo "-s capture driver stats"
+	echo "-i list of local host interfaces"
+	echo "-I list of remote host interfaces"
+	echo "-p list of remote host passwords"
+	echo "-h shows this help"
+	echo
+	echo "Example:"
+	echo "To send traffic to 172.16.0.241 and 172.16.1.241 with 16 UDP flows each"
+	echo "for 60 secs with a message size of 32 bytes:"
+	echo "./perf_flows -a '172.16.0.241 172.16.1.241' -f 16 -t UDP_STREAM -l 60 -m '32'"
+	echo
+	echo "To capture driver stats of local interfaces p6p1, p6p2 and remote interface p6p1, p6p2"
+	echo "./perf_flows -a '172.16.0.241 172.16.1.241' -s -i 'p6p1 p6p2' -I 'p6p1 p6p2' -p 'a b'"
+	echo
+	echo "To iterate over different messages sizes 64, 128, 256, then 1472 to host"
+	echo "172.16.0.241 with 16 UDP flows on each one minute iteration."
+	echo "./perf_flows -a '172.16.0.241' -f 16 -t UDP_STREAM -l 60 -m '64 128 256 1472'"
+	echo
+	echo "Defaults: ipaddr:$addr, num_of_flows:$threads, traffic_type:$traffic_type,"
+	echo "		  time_secs:$runtime, msgsizes:$msg_list,"
+	echo "		  driver_stats_collection:$collect_driver_stats"
+	echo
+	echo "If using for performance measurements, sysctl -p sysctl.lio may help"
+	echo
+}
+
+param_verify()
+{
+	rc=1
+	h_index=0
+
+	for host in $addr
+	do
+		for n in `seq 1 5`
+		do
+			ping -W 1 -c 1 $host >/dev/null 2>&1
+			rc=$?
+			if [ $rc -eq 0 ]
+			then
+				break
+			fi
+		done
+
+		if [ $rc -ne 0 ]
+		then
+			echo "Please make sure that link:$host is up"
+			exit
+		fi
+
+		if [ $collect_driver_stats -ne 0 ]; then
+
+			if ! [ -x "$(command -v sshpass)" ]; then
+				echo "sshpass command is missing"
+				exit
+			fi
+
+			if [ ${#l_inf_arr[@]} -le $h_index ]; then
+				echo "Local interfaces are missing"
+				exit
+			fi
+
+			if [ ${#r_inf_arr[@]} -le $h_index ]; then
+				echo "Remote interfaces are missing"
+				exit
+			fi
+			
+			if [ ${#r_pw_arr[@]} -le $h_index ]; then
+				echo "Remote host passwords are missing"
+				exit
+			fi
+			
+			if [ ! -d /sys/class/net/${l_inf_arr[$h_index]} ]; then
+				echo "Local interface ${l_inf_arr[$h_index]} does not exits"
+				exit
+			fi
+
+			if sshpass -p $r_pw_arr[$h_index] ssh -q root@$host "[ ! -d /sys/class/net/${r_inf_arr[$h_index]} ]"; then
+				echo "Remote interface ${r_inf_arr[$h_index]} does not exits"
+				exit
+			fi
+		fi
+		h_index=$(($h_index+1))
+	done
+
+	if [ $traffic_type != "TCP_STREAM" ] && [ $traffic_type != "UDP_STREAM" ] && [ $traffic_type != "TCP_CRR" ]
+	then
+		echo "Please specify traffic to be either TCP_STREAM or UDP_STREAM"
+	fi
+}
+
+get_local_stat() {
+	ret_val=`cat /sys/class/net/${l_inf_arr[$1]}/statistics/$2` 
+}
+
+get_remote_stat() {
+	ret_val=`sshpass -p ${r_pw_arr[$2]} ssh root@$1 "cat /sys/class/net/${r_inf_arr[$2]}/statistics/$3"`
+}
+
+collect_pre_test_stats() {
+	if [ $collect_driver_stats -ne 0 ]; then
+		h_index=0
+		for i in $addr; do
+			get_local_stat $h_index "tx_packets"; l_start_tx_packets[$h_index]=$ret_val;
+			get_local_stat $h_index "tx_bytes"; l_start_tx_bytes[$h_index]=$ret_val;
+			get_local_stat $h_index "rx_packets"; l_start_rx_packets[$h_index]=$ret_val;
+			get_local_stat $h_index "rx_bytes"; l_start_rx_bytes[$h_index]=$ret_val;
+			
+			get_remote_stat $i $h_index "tx_packets"; r_start_tx_packets[$h_index]=$ret_val;
+			get_remote_stat $i $h_index "tx_bytes"; r_start_tx_bytes[$h_index]=$ret_val;
+			get_remote_stat $i $h_index "rx_packets"; r_start_rx_packets[$h_index]=$ret_val;
+			get_remote_stat $i $h_index "rx_bytes"; r_start_rx_bytes[$h_index]=$ret_val;
+
+			h_index=$(($h_index+1))
+		done
+	fi
+}
+
+collect_post_test_stats() {
+	if [ $collect_driver_stats -ne 0 ]; then
+		h_index=0
+		for i in $addr; do
+			get_local_stat $h_index "tx_packets"; l_end_tx_packets[$h_index]=$ret_val;
+			get_local_stat $h_index "tx_bytes"; l_end_tx_bytes[$h_index]=$ret_val;
+			get_local_stat $h_index "rx_packets"; l_end_rx_packets[$h_index]=$ret_val;
+			get_local_stat $h_index "rx_bytes"; l_end_rx_bytes[$h_index]=$ret_val;
+			
+			l_tx_packets[$h_index]=$((${l_end_tx_packets[$h_index]} - ${l_start_tx_packets[$h_index]}))
+			l_tx_bytes[$h_index]=$((${l_end_tx_bytes[$h_index]} - ${l_start_tx_bytes[$h_index]}))
+			l_rx_packets[$h_index]=$((${l_end_rx_packets[$h_index]} - ${l_start_rx_packets[$h_index]}))
+			l_rx_bytes[$h_index]=$((${l_end_rx_bytes[$h_index]} - ${l_start_rx_bytes[$h_index]}))
+
+			get_remote_stat $i $h_index "tx_packets"; r_end_tx_packets[$h_index]=$ret_val;
+			get_remote_stat $i $h_index "tx_bytes"; r_end_tx_bytes[$h_index]=$ret_val;
+			get_remote_stat $i $h_index "rx_packets"; r_end_rx_packets[$h_index]=$ret_val;
+			get_remote_stat $i $h_index "rx_bytes"; r_end_rx_bytes[$h_index]=$ret_val;
+			
+			r_tx_packets[$h_index]=$((${r_end_tx_packets[$h_index]} - ${r_start_tx_packets[$h_index]}))
+			r_tx_bytes[$h_index]=$((${r_end_tx_bytes[$h_index]} - ${r_start_tx_bytes[$h_index]}))
+			r_rx_packets[$h_index]=$((${r_end_rx_packets[$h_index]} - ${r_start_rx_packets[$h_index]}))
+			r_rx_bytes[$h_index]=$((${r_end_rx_bytes[$h_index]} - ${r_start_rx_bytes[$h_index]}))
+
+			h_index=$(($h_index+1))
+		done
+	fi
+}
+
+log_driver_stats() {
+	if [ $collect_driver_stats -ne 0 ]; then
+		echo
+		echo $pstr
+		h_index=0
+		for i in $addr; do
+			l_tx_mp=`echo ${l_tx_packets[$h_index]} 1000000 | awk '{print $1/$2}'`
+			l_tx_mpps=`echo $l_tx_mp $duration | awk '{print $1/$2}'`
+
+			l_tx_b=`echo ${l_tx_bytes[$h_index]} 8 | awk '{print $1 * $2}'`
+			l_tx_gb=`echo $l_tx_b 1000000000 | awk '{print $1/$2}'`
+			l_tx_gbps=`echo $l_tx_gb $duration | awk '{print $1/$2}'`
+
+			l_rx_mp=`echo ${l_rx_packets[$h_index]} 1000000 | awk '{print $1/$2}'`
+			l_rx_mpps=`echo $l_rx_mp $duration | awk '{print $1/$2}'`
+
+			l_rx_b=`echo ${l_rx_bytes[$h_index]} 8 | awk '{print $1 * $2}'`
+			l_rx_gb=`echo $l_rx_b 1000000000 | awk '{print $1/$2}'`
+			l_rx_gbps=`echo $l_rx_gb $duration | awk '{print $1/$2}'`
+
+			r_tx_mp=`echo ${r_tx_packets[$h_index]} 1000000 | awk '{print $1/$2}'`
+			r_tx_mpps=`echo $r_tx_mp $duration | awk '{print $1/$2}'`
+
+			r_tx_b=`echo ${r_tx_bytes[$h_index]} 8 | awk '{print $1 * $2}'`
+			r_tx_gb=`echo $r_tx_b 1000000000 | awk '{print $1/$2}'`
+			r_tx_gbps=`echo $r_tx_gb $duration | awk '{print $1/$2}'`
+
+			r_rx_mp=`echo ${r_rx_packets[$h_index]} 1000000 | awk '{print $1/$2}'`
+			r_rx_mpps=`echo $r_rx_mp $duration | awk '{print $1/$2}'`
+
+			r_rx_b=`echo ${r_rx_bytes[$h_index]} 8 | awk '{print $1 * $2}'`
+			r_rx_gb=`echo $r_rx_b 1000000000 | awk '{print $1/$2}'`
+			r_rx_gbps=`echo $r_rx_gb $duration | awk '{print $1/$2}'`
+
+			printf "Local  %s > TxMPkts: %.2f TxMPPS: %.3f TxGb: %.2f TxGbps: %.2f RxMPkts: %.2f RxMPPS: %.3f RxGb: %.2f RxGbps: %.2f\n" "${l_inf_arr[$h_index]}" "$l_tx_mp" "$l_tx_mpps" "$l_tx_gb" "$l_tx_gbps" "$l_rx_mp" "$l_rx_mpps" "$l_rx_gb" "$l_rx_gbps" 
+			printf "Remote %s > TxMPkts: %.2f TxMPPS: %.3f TxGb: %.2f TxGbps: %.2f RxMPkts: %.2f RxMPPS: %.3f RxGb: %.2f RxGbps: %.2f\n" "${r_inf_arr[$h_index]}" "$r_tx_mp" "$r_tx_mpps" "$r_tx_gb" "$r_tx_gbps" "$r_rx_mp" "$r_rx_mpps" "$r_rx_gb" "$r_rx_gbps" 
+
+			h_index=$(($h_index+1))
+		done
+		echo $pstr
+	fi
+}
+
+perf_test()
+{
+
+	for msg in $msg_list;
+	do
+		declare -A pid
+
+		date_val=` date +"%H%M%S"`
+		echo
+		echo
+		if [[ "$traffic_type" == "TCP_CRR" ]]
+		then
+			echo "Iteration with msg size: 1Byte"
+		else
+			echo "Iteration with msg size:$msg"
+		fi
+		echo "traffic_type:$traffic_type"
+		echo "Runtime is set to:$runtime"
+
+		collect_pre_test_stats
+		start_sec=$(date +%s)
+		for i in $addr
+		do
+		{
+			for thread in `seq 1 $threads`
+			do
+				if [[ "$traffic_type" == "UDP_STREAM" ]]
+				then
+					netperf -H $i -l $runtime -t $traffic_type -P 0 -- -m $msg -M $msg |sed -n 2p|awk '{print $4}' > /tmp/perf_num_$i.$date_val.t$thread &
+				elif [[ "$traffic_type" == "TCP_CRR" ]]
+				then
+					netperf -H $i -l $runtime -t $traffic_type | sed -n 7p | awk '{print $6}' > /tmp/perf_num_$i.$date_val.t$thread &
+				else
+					netperf -H $i -l $runtime -t $traffic_type -P 0 -- -m $msg -M $msg |awk '{print $5}' > /tmp/perf_num_$i.$date_val.t$thread &
+				fi
+				pid["$i,$thread"]=$!
+			done
+		}
+		done
+		
+		ps -ax |grep netperf|grep -v grep >/dev/null 2>&1
+		if [ $? -ne 0 ]
+		then
+			echo "Please make sure that Netserver is running on addr:$addr and is up"; 
+			exit
+		fi
+
+		count=0
+		pstr="[=======================================================================]"
+		total=$((runtime))	
+		while [ $count -lt $total ]; do
+			sleep 1 # this is work
+			count=$(( $count + 1 ))
+			pd=$(( $count * 73 / $total ))
+			printf "\r%3d.%1d%% %.${pd}s" $(( $count * 100 / $total )) $(( ($count * 1000 / $total) % 10 )) $pstr
+		done
+		printf "\r%3d.%1d%% %.${pd}s" $(( $count * 100 / $total )) $(( ($count * 1000 / $total) % 10 )) $donepstr
+#		sleep $runtime
+#		sleep 2
+		sum_total_throughput=0
+
+		echo
+		echo
+		echo "Waiting for netperf threads to finish ..."
+		for i in $addr
+		do
+			for thread in `seq 1 $threads`
+			do
+				wait ${pid["$i,$thread"]}
+			done
+		done
+		echo "Done."
+
+	        end_sec=$(date +%s)
+	        duration=$(($end_sec-$start_sec))
+		echo "Duration: $duration"
+
+		collect_post_test_stats
+		log_driver_stats
+
+		echo
+		for i in $addr
+		do
+			echo $pstr
+			if [[ "$traffic_type" == "TCP_CRR" ]]
+			then
+				echo "Conn/Sec for addr:$i flows:$threads runtime:$runtime"
+			else
+				echo "Bandwidth in 10^6 bits/sec for addr:$i flows:$threads runtime:$runtime"
+			fi
+			throughput=0
+			for thread in `seq 1 $threads`
+			do
+				if [ -s /tmp/perf_num_$i.$date_val.t$thread ]
+				then
+					thread_throughput=`cat /tmp/perf_num_$i.$date_val.t$thread`
+					throughput=`echo $throughput + $thread_throughput | bc -l`
+					rm -f /tmp/perf_num_$i.$date_val.t$thread
+				else
+					echo "!!! FATAL ERROR !!!"
+					echo "result file" /tmp/perf_num_$i.$date_val.t$thread " is missing or empty"
+					echo "Ignore the results and aborting the test"
+					exit
+				fi
+			done
+			echo $throughput
+			echo $pstr
+			echo $throughput >> /tmp/perf_total_$date_val
+			rm -f /tmp/perf_num_$i.$date_val
+			#rm -f /tmp/perf_num_$i_err.$date_val
+		done
+
+		echo $pstr
+
+		if [[ "$traffic_type" == "TCP_CRR" ]]
+		then 
+			echo "Sum Total Conn/Sec  $traffic_type addr:$addr flows:$threads runtime:$runtime"
+		else
+			echo "sum_total_throughput 10^6bits/sec $traffic_type addr:$addr flows:$threads runtime:$runtime msg:$msg"
+		fi
+		cat /tmp/perf_total_$date_val |paste -sd+ |bc
+		echo $pstr
+		rm -f /tmp/perf_total_$date_val
+	done
+}
+
+if [ "$#" -lt 1 ]; then
+	usage
+	exit 1
+fi
+
+while getopts ":a:s:i:I:p:f:t:l:m:h:" o; do
+	case "${o}" in
+	a)
+		addr=${OPTARG}
+		;;
+	s)
+		collect_driver_stats=1
+		OPTIND=$(($OPTIND-1))
+		;;
+	i)
+		l_inf=${OPTARG}
+		l_inf_arr=($l_inf)
+		;;
+	I)
+		r_inf=${OPTARG}
+		r_inf_arr=($r_inf)
+		;;
+	p)
+		r_pw=${OPTARG}
+		r_pw_arr=($r_pw)
+		;;
+	f)
+		threads=${OPTARG}
+		;;
+	t)
+		traffic_type=${OPTARG}
+		;;
+	l)
+		runtime=${OPTARG}
+		;;
+	m)
+		msg_list=${OPTARG}
+		;;
+	h)
+		usage
+		exit 1
+		;;
+	*)
+		usage
+		exit 1
+		;;
+	esac
+done
+shift $((OPTIND-1))
+
+param_verify
+perf_test

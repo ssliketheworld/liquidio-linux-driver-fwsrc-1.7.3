@@ -1,0 +1,29 @@
+LiquidIO PCI Driver for Cavium High Speed Server Adapters.
+==========================================================
+
+Release 1.7.3
+=======================
+* Improved 25G link bring-up reliability and added RS-FEC support. For improved
+  functionality, the 1.7.3 Preboot release must be installed.
+* Added VF MAC Spoof checking support
+* Ethtool improvements:
+  * Added ethtool -m support to report SFP module information.
+  * Added ethtool -s support to change between 10G and 25G speeds on
+    25G adapters
+  * Added ethtool -s and --set-priv-flags RS_FEC on|off support for setting
+    RS-FEC on/off (see README) on 25G adapters.
+  * Fixed issue of 1000baseT being improperly reported as supported on some 
+    adapters.
+* Performance improvements:
+  * Fixed IPv6 VXLAN TSO performance 
+  * Fixed hashing issue that affected VXLAN scaling when connected to a guest
+    VM over virtio on a 4.4 kernel
+* Misc fixes:
+  * Fixed issue with host hang when re-binding a VF that was previously used by
+    DPDK.
+  * Reduced CPU overhead when gathering link statistics
+  * Improved driver to firmware timeout consistency
+* Known release issues (see README for additional troubleshooting notes):
+  * PTP Tx and Rx timestamping is disabled.
+  * Disabling SRIOV while VFs are attached to a VM can cause a hypervisor
+    lockup.

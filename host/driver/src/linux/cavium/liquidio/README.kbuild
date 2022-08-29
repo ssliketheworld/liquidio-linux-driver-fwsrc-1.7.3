@@ -1,0 +1,54 @@
+How to integrate the LiquidIO driver to the Linux Kernel Build System (Kbuild)
+
+    cd /path/to/linux-3.xx/drivers/net/ethernet
+
+
+Edit the Kconfig file in that directory; add this line:
+
+    source "drivers/net/ethernet/cavium/Kconfig"
+
+in the area around the vendors that start with the letter C.
+
+
+Edit the Makefile in that directory; add this line:
+
+    obj-$(CONFIG_NET_VENDOR_CAVIUM) += cavium/
+
+in the area around the vendors that start with the letter C.
+
+
+While still at that drivers/net/ethernet directory:
+
+    cp -r $LIQUIDIO_ROOT/host/driver/src/linux/cavium .
+    cp -r $LIQUIDIO_ROOT/host/driver/src/osi/* ./cavium/liquidio
+    cd cavium/liquidio
+    mv Makefile.kbuild Makefile
+
+
+Now cd to /path/to/linux-3.xx and configure the kernel.  There will be two new
+CONFIG symbols:
+
+    CONFIG_NET_VENDOR_CAVIUM
+    CONFIG_LIQUIDIO
+
+Set CONFIG_NET_VENDOR_CAVIUM to "y", and set CONFIG_LIQUIDIO to "m" or "y".
+
+If you build the LiquidIO driver as a built-in kernel module (as opposed to a
+loadable kernel module), then you must add the firmware images to your
+initrd/initramfs.  The reason for this is because when the built-in LiquidIO
+driver is initialized, the real root filesystem (which normally contains the
+firmware images) is not yet mounted.
+
+So please put these firmware images:
+
+    lio_210sv_nic.bin
+    lio_410nv_nic.bin
+    lio_any_nic.bin
+
+in /lib/firmware/octeon of your initrd/initramfs.
+
+
+But if you build the LiquidIO driver as a loadable kernel module, then instead
+of putting the firmware images in initrd/initramfs, you must put them in the
+real root filesystem (typically that's your hard drive) in the path
+/lib/firmware/octeon

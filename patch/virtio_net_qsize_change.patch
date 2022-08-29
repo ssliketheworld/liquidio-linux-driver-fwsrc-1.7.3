@@ -1,0 +1,54 @@
+--- qemu-1.5.3.org/hw/net/virtio-net.c	2016-06-06 12:42:09.050434078 +0530
++++ qemu-1.5.3/hw/net/virtio-net.c	2016-06-06 12:45:10.274431465 +0530
+@@ -1180,6 +1180,7 @@
+     }
+ }
+ 
++#define VIRTIO_QUEUE_SIZE 1024
+ static void virtio_net_set_multiqueue(VirtIONet *n, int multiqueue)
+ {
+     VirtIODevice *vdev = VIRTIO_DEVICE(n);
+@@ -1192,16 +1193,16 @@
+     }
+ 
+     for (i = 1; i < max; i++) {
+-        n->vqs[i].rx_vq = virtio_add_queue(vdev, 256, virtio_net_handle_rx);
++        n->vqs[i].rx_vq = virtio_add_queue(vdev, VIRTIO_QUEUE_SIZE, virtio_net_handle_rx);
+         if (n->vqs[i].tx_timer) {
+             n->vqs[i].tx_vq =
+-                virtio_add_queue(vdev, 256, virtio_net_handle_tx_timer);
++                virtio_add_queue(vdev, VIRTIO_QUEUE_SIZE, virtio_net_handle_tx_timer);
+             n->vqs[i].tx_timer = qemu_new_timer_ns(vm_clock,
+                                                    virtio_net_tx_timer,
+                                                    &n->vqs[i]);
+         } else {
+             n->vqs[i].tx_vq =
+-                virtio_add_queue(vdev, 256, virtio_net_handle_tx_bh);
++                virtio_add_queue(vdev, VIRTIO_QUEUE_SIZE, virtio_net_handle_tx_bh);
+             n->vqs[i].tx_bh = qemu_bh_new(virtio_net_tx_bh, &n->vqs[i]);
+         }
+ 
+@@ -1467,7 +1468,7 @@
+ 
+     n->max_queues = MAX(n->nic_conf.queues, 1);
+     n->vqs = g_malloc0(sizeof(VirtIONetQueue) * n->max_queues);
+-    n->vqs[0].rx_vq = virtio_add_queue(vdev, 256, virtio_net_handle_rx);
++    n->vqs[0].rx_vq = virtio_add_queue(vdev, VIRTIO_QUEUE_SIZE, virtio_net_handle_rx);
+     n->curr_queues = 1;
+     n->vqs[0].n = n;
+     n->tx_timeout = n->net_conf.txtimer;
+@@ -1481,12 +1482,12 @@
+     }
+ 
+     if (n->net_conf.tx && !strcmp(n->net_conf.tx, "timer")) {
+-        n->vqs[0].tx_vq = virtio_add_queue(vdev, 256,
++        n->vqs[0].tx_vq = virtio_add_queue(vdev, VIRTIO_QUEUE_SIZE,
+                                            virtio_net_handle_tx_timer);
+         n->vqs[0].tx_timer = qemu_new_timer_ns(vm_clock, virtio_net_tx_timer,
+                                                &n->vqs[0]);
+     } else {
+-        n->vqs[0].tx_vq = virtio_add_queue(vdev, 256,
++        n->vqs[0].tx_vq = virtio_add_queue(vdev, VIRTIO_QUEUE_SIZE,
+                                            virtio_net_handle_tx_bh);
+         n->vqs[0].tx_bh = qemu_bh_new(virtio_net_tx_bh, &n->vqs[0]);
+     }

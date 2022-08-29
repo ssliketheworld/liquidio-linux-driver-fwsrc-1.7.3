@@ -1,0 +1,86 @@
+WARNINGS     := -Wall -Werror -Wuninitialized -Wunused-function -Werror-implicit-function-declaration
+
+CDIR = ../../../osi/
+
+ifdef  OVS_IPSEC
+INCLUDE      := -I$(src) -I$(src)/$(CDIR) -DOVS_IPSEC -DCAVIUM_ONLY_CONFIG_LIQUIDIO_VSWITCH -DLINUX_IPSEC -D OVS_ACTIVE_COREMASK=$(OVS_ACTIVE_COREMASK)
+
+ifeq ($(MODNAME),)
+$(error MODNAME is not set)
+MODNAME=liquidio_ovsipsec
+endif
+else
+ifdef LINUX_IPSEC
+INCLUDE      := -I$(src) -I$(src)/$(CDIR) -DLINUX_IPSEC
+ifeq ($(MODNAME),)
+$(error MODNAME is not set)
+MODNAME=liquidio_ipsec
+endif
+else 
+ifdef  VSWITCH 
+INCLUDE      := -I$(src) -I$(src)/$(CDIR) -DCAVIUM_ONLY_CONFIG_LIQUIDIO_VSWITCH -D OVS_ACTIVE_COREMASK=$(OVS_ACTIVE_COREMASK) -DHOST_MGMT_FILTERING
+ifeq ($(MODNAME),)
+$(error MODNAME is not set)
+MODNAME=liquidio_ovs
+endif
+else
+INCLUDE      := -I$(src) -I$(src)/$(CDIR)
+MODNAME=liquidio
+
+#BPF_OFFLOAD=1
+ifdef BPF_OFFLOAD
+INCLUDE	+= -I$(src)/$(BPF_DIR)
+endif
+
+endif
+endif
+endif
+
+ccflags-y    := -D__SMP__ -O2 -finline-functions $(INCLUDE) $(WARNINGS) -DCONFIG_LIQUIDIO_PAGE_ALLOCATIONS
+
+ifdef VIRTIO_RXZCP
+ccflags-y += -DCAVIUM_ONLY_VIRTIO_RX_ZEROCOPY_SUPPORT
+endif
+
+ifdef BPF_OFFLOAD
+ccflags-y += -DCAVIUM_ONLY_BPF_OFFLOAD_SUPPORT
+endif
+
+obj-m        := $(MODNAME).o
+
+$(MODNAME)-y :=   lio_main.o      \
+		lio_ethtool.o             \
+		liquidio_mgmt.o            \
+		$(CDIR)request_manager.o  \
+		$(CDIR)response_manager.o \
+		$(CDIR)octeon_device.o    \
+		$(CDIR)cn66xx_device.o    \
+		$(CDIR)cn68xx_device.o    \
+		$(CDIR)cn23xx_pf_device.o \
+		$(CDIR)cn23xx_vf_device.o \
+		$(CDIR)octeon_mailbox.o   \
+		$(CDIR)octeon_mem_ops.o   \
+		$(CDIR)octeon_droq.o      \
+		$(CDIR)octeon_console.o   \
+		$(CDIR)octeon_nic.o       \
+		lio_vf_rep.o              \
+		lio_core.o
+
+ifdef BPF_OFFLOAD
+$(MODNAME)-y += $(BPF_DIR)lio_bpf_jit.o \
+		$(BPF_DIR)lio_bpf_verifier.o \
+		$(BPF_DIR)lio_bpf_offload.o \
+		$(BPF_DIR)lio_mips64_asm.o
+endif
+
+ifdef CAVIUM_ONLY_SUPPORT_CN78XX
+$(MODNAME)-y += $(CDIR)cn78xx_device.o
+ccflags-y += -DCAVIUM_ONLY_SUPPORT_CN78XX
+endif
+
+ifndef VSWITCH
+ifneq ($(CONFIG_DCB),)
+$(MODNAME)-y += lio_dcb_main.o		\
+		lio_dcbnl.o
+endif
+endif

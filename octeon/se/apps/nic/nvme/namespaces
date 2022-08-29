@@ -1,0 +1,18 @@
+!
+! Namespace generator file
+!
+namespace ! 1
+
+	nsze 65536
+	
+nameend
+
+namespace ! 2
+
+	nsze 65536
+	
+nameend
+
+! assign 0 1 2 ! give the pf namespaces 1 and 2
+
+policy onetoone !Assign one name space to each ctrlr

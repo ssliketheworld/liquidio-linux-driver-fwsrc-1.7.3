@@ -1,0 +1,16 @@
+--- a/kvm-all.c	2016-03-26 17:31:48.150860994 -0700
++++ b/kvm-all.c	2016-03-26 21:37:59.562637676 -0700
+@@ -628,7 +628,12 @@
+     }
+     start_addr += delta;
+     size -= delta;
+-    size &= TARGET_PAGE_MASK;
++    if (size & (TARGET_PAGE_SIZE-1)) {
++       start_addr += (size & (TARGET_PAGE_SIZE -1));
++       delta      += (size & (TARGET_PAGE_SIZE -1));
++       size       -= (size & (TARGET_PAGE_SIZE -1));
++    }
++
+     if (!size || (start_addr & ~TARGET_PAGE_MASK)) {
+         return;
+     }

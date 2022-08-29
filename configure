@@ -1,0 +1,105 @@
+#! /bin/bash
+
+CONFIG=.config.mk
+export LIQUIDIO_ROOT=$PWD
+export DRIVER_BIN=$LIQUIDIO_ROOT/bin 
+export NIC_PKG=BIN
+export LIO_IPSEC_PKG=NONE
+export LIO_DCB_PKG=NONE
+export LIO_RXZCP_PKG=NONE
+
+function USAGE
+{
+    echo ""
+    echo "Usage:"
+    echo "./`basename $0` [<Absolute path to OCTEON SDK>]"
+    echo "For source package, OCTEON SDK path must be passed,"
+    echo "or exist in the environment."
+    rm -f $CONFIG
+    exit 1
+}
+
+echo export LIQUIDIO_ROOT=$LIQUIDIO_ROOT > $CONFIG
+
+if [ -f $LIQUIDIO_ROOT/octeon/se/core/cvm-drv.c ]; then
+    export NIC_PKG=SRC
+    if [ "$#" -eq 0 ] && [ -z $OCTEON_ROOT ]; then
+        echo "Error: OCTEON_ROOT is not available."
+        echo "Please export OCTEON_ROOT or pass the path to it"
+        echo "on the command line."
+        USAGE;
+        rm -f $CONFIG
+    else
+        if [ "$#" -ge 1 ]; then
+            export OCTEON_ROOT=$1
+        fi
+
+        #Check whether absolute path is provided
+        if [[ $OCTEON_ROOT != /* ]]; then
+            echo "Error: Provide absolute path for Octeon SDK"
+            USAGE;
+        fi
+
+        #Check the folder is Octeon SDK
+        if [ ! -f $OCTEON_ROOT/env-setup ]; then
+            echo "Error: \"$OCTEON_ROOT\" is not an Octeon SDK folder"
+            USAGE;
+        fi
+
+        echo "Using $OCTEON_ROOT for OCTEON environment"
+        echo export OCTEON_ROOT=$OCTEON_ROOT >> $CONFIG
+
+        cd $OCTEON_ROOT
+	./host/bin/oct-version | grep "3.1.2-p13-L4"  &> /dev/null
+	if [ $? != 0 ]; then
+		echo "Unsupported SDK version"
+		exit 1;
+	fi
+        source ./env-setup OCTEON_CN23XX_PASS1_2
+        cd $LIQUIDIO_ROOT
+
+        echo export NIC_PKG=$NIC_PKG >> $CONFIG
+        echo export OCTEON_CPPFLAGS_GLOBAL_ADD=$OCTEON_CPPFLAGS_GLOBAL_ADD >> $CONFIG
+        echo export OCTEON_LE=$OCTEON_LE >> $CONFIG
+        echo export OCTEON_LIQUIDIO=$OCTEON_LIQUIDIO >> $CONFIG
+        echo export OCTEON_MODEL=$OCTEON_MODEL >> $CONFIG
+
+        echo -n "LIQUIDIO-SDK-SRC build environment "
+    fi
+
+    if [ -d "$LIQUIDIO_ROOT/octeon/se/apps/dcb" ]; then
+        export LIO_DCB_PKG=SRC
+    	echo export LIO_DCB_PKG=$LIO_DCB_PKG>> $CONFIG
+    	echo -n "(DCB) "
+    fi
+
+    if [ -d "$LIQUIDIO_ROOT/octeon/se/apps/nic/ipsec" ]; then
+        export LIO_IPSEC_PKG=SRC
+        echo export LIO_IPSEC_PKG=$LIO_IPSEC_PKG>> $CONFIG
+        echo -n "(IPsec) "
+    fi
+
+    if [ -d "$LIQUIDIO_ROOT/octeon/se/apps/vswitch" ]; then
+        export LIO_VSWITCH_PKG=SRC
+        echo export LIO_VSWITCH_PKG=$LIO_VSWITCH_PKG >> $CONFIG
+        echo -n "(VSwitch) "
+    fi
+
+    if [ -d "$LIQUIDIO_ROOT/host/driver/src/linux/rx_zerocp_centos7.2" ]; then
+        export LIO_RXZCP_PKG=SRC
+    	echo export LIO_RXZCP_PKG=$LIO_RXZCP_PKG>> $CONFIG
+    	echo -n "(RXZCP) "
+    fi
+
+
+    echo "is ready."
+
+else
+    echo "LIQUIDIO-SDK-BIN build environment is ready"
+    echo export NIC_PKG=$NIC_PKG >> $CONFIG
+fi
+
+echo "Bash users, please run 'export PATH=\$PATH:$LIQUIDIO_ROOT/bin' for access to tools"
+
+export LIO_IPSEC_PKG=NONE
+

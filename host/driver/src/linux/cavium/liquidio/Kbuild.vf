@@ -1,0 +1,59 @@
+WARNINGS     := -Wall -Werror -Wuninitialized -Wunused-function -Werror-implicit-function-declaration
+
+CDIR = ../../../osi/
+
+ifdef OVS_IPSEC
+INCLUDE      := -I$(src) -I$(src)/$(CDIR) -DOVS_IPSEC -DCAVIUM_ONLY_CONFIG_LIQUIDIO_VSWITCH -DLINUX_IPSEC
+ifeq ($(MODNAME),)
+$(error MODNAME is not set)
+MODNAME=liquidio_ovsipsec
+endif
+else
+ifdef LINUX_IPSEC
+INCLUDE      := -I$(src) -I$(src)/$(CDIR) -DLINUX_IPSEC
+ifeq ($(MODNAME),)
+$(error MODNAME is not set)
+MODNAME=liquidio_ipsec
+endif
+else 
+ifdef VSWITCH
+INCLUDE      := -I$(src) -I$(src)/$(CDIR) -DCAVIUM_ONLY_CONFIG_LIQUIDIO_VSWITCH
+ifeq ($(MODNAME),)
+$(error MODNAME is not set)
+MODNAME=liquidio_ovs
+endif
+else
+INCLUDE      := -I$(src) -I$(src)/$(CDIR)
+MODNAME=liquidio
+endif
+endif
+endif
+
+
+ccflags-y    := -D__SMP__ -O2 -finline-functions $(INCLUDE) $(WARNINGS) -DCAVIUM_BYTE_ALLOC_RXBUFS
+
+ifdef VIRTIO_RXZCP
+ccflags-y += -DCAVIUM_ONLY_VIRTIO_RX_ZEROCOPY_SUPPORT #-DVIRTIO_RXZCP_RX_THREAD_CONTEXT
+endif
+
+obj-m        := $(MODNAME)_vf.o
+
+$(MODNAME)_vf-y := lio_vf_main.o  \
+		lio_ethtool.o             \
+		$(CDIR)request_manager.o  \
+		$(CDIR)response_manager.o \
+		$(CDIR)octeon_device.o    \
+		$(CDIR)cn66xx_device.o 	  \
+		$(CDIR)cn68xx_device.o    \
+		$(CDIR)cn23xx_pf_device.o \
+		$(CDIR)cn23xx_vf_device.o \
+		$(CDIR)octeon_mailbox.o   \
+		$(CDIR)octeon_mem_ops.o   \
+		$(CDIR)octeon_droq.o      \
+		$(CDIR)octeon_nic.o       \
+		lio_core.o
+
+ifdef VIRTIO_RXZCP
+$(MODNAME)_vf-y += lio_zerocp_if.o \
+		lio_zerocp_buf.o
+endif

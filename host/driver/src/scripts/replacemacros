@@ -1,0 +1,682 @@
+#!/bin/bash
+
+#
+# Replace cavium_ macros in the linux driver source
+#
+# Usage:
+#
+# replacemacros [root_directory]
+#
+
+function replacename {
+
+    #
+    # Remove exception files from process
+    # If we recursively process the definition files, bad things happen.
+    #
+    local filename=$(basename $1)
+    if [ "$filename" == "cvm_linux_types.h" ]; then
+        return
+    fi
+    
+    #
+    # Now we process custom rules. These are macros that reorder or otherwise
+    # modify their arguments.
+    #
+    if [ "$2" == "OCTEON_WRITE32" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\2, \1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # For Multi Line(2) 
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE32\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/writel($4,\n$2$3$1);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "OCTEON_WRITE16" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\2, \1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "OCTEON_WRITE8" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\2, \1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "OCTEON_WRITE64" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\2, \1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # For Multi Line(2-5)
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE64\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/writeq($4,\n$2$3$1);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE64\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\n([\t]*)[\t]([ ]*)(.*)\);/writeq($4\n$5$6$7,\n$2$3$1);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE64\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\n([\t]*)[\t]([ ]*)(.*)\n([\t]*)[\t]([ ]*)(.*)\);/writeq($4\n$5$6$7\n$8$9$10,\n$2$3$1);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE64\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\n([\t]*)[\t]([ ]*)(.*)\n([\t]*)[\t]([ ]*)(.*)\n([\t]*)[\t]([ ]*)(.*)\);/writeq($4\n$5$6$7\n$8$9$10\n$11$12$13,\n$2$3$1);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_check_timeout" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\1, (unsigned long)\2)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_atomic_cmpxchg" ]; then
+	sed "s/$2(\(.*\), *\(.*\), *\(.*\))/$3(\1, \2, \3)/" $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# NOTE: substitution requires removing a tab and adding a space. HOWEVER, if there are already 7 spaces, adding one more will flag an error in 'checkpatch'.
+	#       So, check for this special condition first.
+	# For multi-line, checking return value, two lines (with 7 leading spaces on second line); in this case, don't remove tab and add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_atomic_cmpxchg\((.*)\,\n([\t]*)       (.*)\)/atomic_cmpxchg($1,\n$2$3)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For three-line, checking return value, three lines, one param on each line (with 7 leading spaces on second line); in this case, don't remove tab and add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_atomic_cmpxchg\((.*)\,\n([\t]*)       (.*)\,\n([\t]*)       (.*)\)/atomic_cmpxchg($1,\n$2$3,\n$4$5)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For multi-line, checking return value, one or two lines
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_atomic_cmpxchg\((.*)\,\n[\t]([\t]*)([ ]*)(.*)\)/atomic_cmpxchg($1,\n$2 $3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For multi-line, checking return value, three lines, one param on each line
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_atomic_cmpxchg\((.*)\,\n[\t]([\t]*)([ ]*)(.*)\,\n[\t]([\t]*)([ ]*)(.*)\)/atomic_cmpxchg($1,\n$2 $3$4,\n$5 $6$7)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+    elif [ "$2" == "cavium_alloc_workqueue" ]; then
+	sed "s/$2(\(.*\), *\(.*\), *\(.*\))/$3(\1, \2, \3)/" $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# NOTE: substitution requires removing a tab and adding a space. HOWEVER, if there are already 7 spaces, adding one more will flag an error in 'checkpatch'.
+	#       So, check for this special condition first.
+	# For multi-line, checking return value, two lines (with 7 leading spaces on second line); in this case, don't remove tab and add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_alloc_workqueue\((.*)\,\n([\t]*)       (.*)\)/alloc_workqueue($1,\n$2$3)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For three-line, checking return value, three lines, one param on each line (with 7 leading spaces on second line); in this case, don't remove tab and add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_alloc_workqueue\((.*)\,\n([\t]*)       (.*)\,\n([\t]*)       (.*)\)/alloc_workqueue($1,\n$2$3,\n$4$5)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For multi-line, checking return value, one or two lines
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_alloc_workqueue\((.*)\,\n[\t]([\t]*)([ ]*)(.*)\)/alloc_workqueue($1,\n$2 $3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For multi-line, checking return value, three lines, one param on each line
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_alloc_workqueue\((.*)\,\n[\t]([\t]*)([ ]*)(.*)\,\n[\t]([\t]*)([ ]*)(.*)\)/alloc_workqueue($1,\n$2 $3$4,\n$5 $6$7)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+    elif [ "$2" == "OCTEON_READ_PCI_CONFIG" ]; then
+        sed "s/$2(\(.*\), *\(.*\), *\(.*\))/$3(\1->pci_dev, \2, \3)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+	# For Multi-line(2-3)
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_READ_PCI_CONFIG\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*);/pci_read_config_dword($1->pci_dev$2\n$3      $5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_READ_PCI_CONFIG\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/pci_read_config_dword($1->pci_dev$2\n$3      $5\n$6      $8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+	# For multi-line, checking return value, one param on 1st line, two on 2nd
+	perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_READ_PCI_CONFIG\((\w*)\,\n([\t]*)[ ]([ ]*)(.*)\)/pci_read_config_dword($1->pci_dev,\n$2$3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For multi-line, checking return value, two params on 1st line, one on 2nd
+	perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_READ_PCI_CONFIG\((\w*)\,[ ]*(\w*)\,\s*\n([\t]*)[ ]([ ]*)(.*)\)/pci_read_config_dword($1->pci_dev, $2,\n$3$4$5)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+	# For multi-line, checking return value, one param on each line
+	perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_READ_PCI_CONFIG\((\w*)\,\n([\t]*)[ ]([ ]*)(\w*)\,\n([\t]*)[ ]([ ]*)(.*)\)/pci_read_config_dword($1->pci_dev,\n$2$3$4,\n$5$6$7)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+        return
+    elif [ "$2" == "OCTEON_WRITE_PCI_CONFIG" ]; then
+        sed "s/$2(\(.*\), *\(.*\), *\(.*\))/$3(\1->pci_dev, \2, \3)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE_PCI_CONFIG\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)/pci_write_config_dword($1->pci_dev$2\n$3 $5/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/OCTEON_WRITE_PCI_CONFIG\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)/pci_write_config_dword($1->pci_dev$2\n$3 $5\n$6 $8/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        return
+    elif [ "$2" == "cavium_enable_irq" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\2)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_disable_irq_nosync" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\2)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_queue_delayed_work" ]; then
+        sed "s/$2(\(.*\), *\(.*\), *\(.*\))/$3(\1, \2, msecs_to_jiffies(\3))/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "CAVIUM_LIST_NEXT" ]; then
+        sed "s/\($2(\)\([^)]*\))/\2->next/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_schedule_delayed_work" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\1, msecs_to_jiffies(\2))/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_schedule_delayed_work\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/schedule_delayed_work($1,\n$2      msecs_to_jiffies($4));/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_schedule_delayed_work\s*\(\s*\n([\t]*)[\t]([ ]*)(.*),\s*\n([\t]*)[\t]([ ]*)(.*),\s*\n([\t]*)[\t]([ ]*)(.*)\);/schedule_delayed_work($1$3,\n$4$6,\n$7      msecs_to_jiffies($9));/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_mod_delayed_work" ]; then
+        sed "s/$2(\(.*\), *\(.*\))/$3(\1, msecs_to_jiffies(\2))/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_pr_err" ]; then
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_err\s*\(\s*(.*);/$1pr_err($2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_err\s*\(\s*(.*)\n([\t]*)([ ]*)(.*);/$1pr_err($2\n$1       $5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_err\s*\(\s*(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/$1pr_err($2\n$1       $5\n$1       $8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_err\s*\(\s*(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/$1pr_err($2\n$1       $5\n$1       $8\n$1       $11/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_pr_info" ]; then
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_info\s*\(\s*(.*);/$1pr_info($2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_info\s*\(\s*(.*)\n([\t]*)([ ]*)(.*);/$1pr_info($2\n$1\t$5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_info\s*\(\s*(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/$1pr_info($2\n$1\t$5\n$1\t$8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)cavium_pr_err\s*\(\s*(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/$1pr_err($2\n$1\t$5\n$1\t$8\n$1\t$11/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_dev_ptr" ]; then
+        sed "s/\(cavium_dev_ptr(\)\(.*\))/\&\2->dev/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_cpumask" ]; then
+        sed "s/cavium_cpumask/struct cpumask/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "UNUSED" ]; then
+        sed "s/ UNUSED/ __attribute__\(\(unused\)\)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "BUG" ]; then
+        sed "s/$2(\(.*\))/$3(1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "BUG_ON" ]; then
+	sed "s/$2(\(.*\))/$3(\1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    elif [ "$2" == "cavium_snprintf" ]; then
+	perl -MText::Tabs -e 'undef $/; $s = <>; $s =~ s/(.*)cavium_(snprintf\s*\(.*\);)/$1$2/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # Two line calls
+	perl -MText::Tabs -e 'undef $/; $s = <>; $s =~ s/(.*)cavium_(snprintf\s*\(.*\n)(.*\);)/$1.$2.unexpand(substr(expand($3), 7))/ge; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # Three line calls
+	perl -MText::Tabs -e 'undef $/; $s = <>; $s =~ s/(.*)cavium_(snprintf\s*\(.*\n)(.*\n)(.*\);)/$1.$2.unexpand(substr(expand($3), 7)).unexpand(substr(expand($4), 7))/ge; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+	return
+    elif [ "$2" == "cavium_strncat" ]; then
+	sed "s/$2(\(.*\))/$3(\1)/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # Two line calls
+	perl -MText::Tabs -e 'undef $/; $s = <>; $s =~ s/(.*)cavium_(strncat\s*\(.*\n)(.*\);)/$1.$2.unexpand(substr(expand($3), 7))/ge; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # Three line calls
+	perl -MText::Tabs -e 'undef $/; $s = <>; $s =~ s/(.*)cavium_(strncat\s*\(.*\n)(.*\n)(.*\);)/$1.$2.unexpand(substr(expand($3), 7)).unexpand(substr(expand($4), 7))/ge; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+	return
+    elif [ "$2" == "cavium_memcpy" ]; then
+        sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # For Multi Line(2-3) Replace last tab with 7 space
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_memcpy\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/memcpy($1,\n$2       $4);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_memcpy\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*),\s*\n([\t]*)[\t]([ ]*)(.*)\);/memcpy($1,\n$2       $4,\n$5       $7);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+
+    elif [ "$2" == "cavium_memset" ]; then
+        sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # For Multi Line(2-3) Replace last tab with 7 space
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_memset\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/memset($1,\n$2       $4);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_memset\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*),\s*\n([\t]*)[\t]([ ]*)(.*)\);/memset($1,\n$2       $4,\n$5       $7);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    
+    elif [ "$2" == "cavium_vzalloc" ]; then
+        sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+	# For multi-line (2) where first parameter is broken across lines (i.e. no trailing ',' on first line)
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vzalloc\s*\((.*)\s*\n([\t]*)[\t]([ ]*)(.*)\);/vzalloc($1\n$2      $4);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    
+    elif [ "$2" == "cavium_vzalloc_node" ]; then
+        sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+	# NOTE: substitution requires removing a tab and adding a space. HOWEVER, if there are already 7 spaces, adding one more will flag an error in 'checkpatch'.
+	#       So, check for this special condition first.
+
+	# For multi-line, checking return value, two lines (with 7 leading spaces on second line); in this case, don't remove tab and add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vzalloc_node\((.*)\,\n([\t]*)       (.*)\)/vzalloc_node($1,\n$2$3)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line (3)where first parameter is broken across lines (i.e. no trailing ',' on first line) AND with 7 leading spaces on 2 & 3rd lines
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vzalloc_node\s*\((.*)\s*\n([\t]*)       (.*),\s*\n([\t]*)       (.*)\)/vzalloc_node($1\n$2$3,\n$4$5)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line, checking return value, one or two lines
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vzalloc_node\((.*)\,\n[\t]([\t]*)([ ]*)(.*)\)/vzalloc_node($1,\n$2 $3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	## For multi-line (2) where first parameter is broken across lines (i.e. no trailing ',' on first line); remove tab, add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vzalloc_node\s*\((.*)\s*\n([\t]*)[\t]([ ]*)(.*)\)/vzalloc_node($1\n$2 $3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line (3) where first parameter is broken across lines (i.e. no trailing ',' on first line); remove tab, add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vzalloc_node\s*\((.*)\s*\n([\t]*)[\t]([ ]*)(.*),\s*\n([\t]*)[\t]([ ]*)(.*)\)/vzalloc_node($1\n$2 $3$4,\n$5 $6$7)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+        return
+    
+    elif [ "$2" == "cavium_vmalloc_node" ]; then
+
+	sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# NOTE: substitution requires removing a tab and adding a space. HOWEVER, if there are already 7 spaces, adding one more will flag an error in 'checkpatch'.
+	#       So, check for this special condition first.
+
+	# For multi-line, checking return value, two lines (with 7 leading spaces on second line); in this case, don't remove tab and add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vmalloc_node\((.*)\,\n([\t]*)       (.*)\)/vmalloc_node($1,\n$2$3)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line (2) where first parameter is broken across lines (i.e. no trailing ',' on first line); AND with 7 leading spaces on 2nd line
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vmalloc_node\s*\((.*)\s*\n([\t]*)       (.*)\)/vmalloc_node($1\n$2$3)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line (3) where first parameter is broken across lines (i.e. no trailing ',' on first line) AND with 7 leading spaces on 2 & 3rd lines
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vmalloc_node\s*\((.*)\s*\n([\t]*)       (.*),\s*\n([\t]*)       (.*)\)/vmalloc_node($1\n$2$3,\n$4$5)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line, checking return value, one or two lines
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vmalloc_node\((.*)\,\n[\t]([\t]*)([ ]*)(.*)\)/vmalloc_node($1,\n$2 $3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line (2) where first parameter is broken across lines (i.e. no trailing ',' on first line); remove tab, add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vmalloc_node\s*\((.*)\s*\n([\t]*)[\t]([ ]*)(.*)\)/vmalloc_node($1\n$2 $3$4)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	# For multi-line (3) where first parameter is broken across lines (i.e. no trailing ',' on first line); remove tab, add a space
+	perl -e 'undef $/; $s = <>; $s =~ s/cavium_vmalloc_node\s*\((.*)\s*\n([\t]*)[\t]([ ]*)(.*),\s*\n([\t]*)[\t]([ ]*)(.*)\)/vmalloc_node($1\n$2 $3$4,\n$5 $6$7)/g; print $s' $1 > $1.temp1
+	mv -f $1.temp1 $1
+
+	return
+    
+    elif [ "$2" == "CAVIUM_INIT_DELAYED_WORK" ]; then
+        sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # For Multi Line(2-3) Replace last tab with 2 space
+        perl -e 'undef $/; $s = <>; $s =~ s/CAVIUM_INIT_DELAYED_WORK\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/INIT_DELAYED_WORK($1,\n$2  $4);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    
+    elif [ "$2" == "cavium_atomic_add" ]; then
+        sed "s/$2(\(.*\));/$3(\1);/" $1 > $1.temp1
+        mv -f $1.temp1 $1
+        # For Multi Line(2) Replace last tab with 3 space
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_atomic_add\s*\((.*)\,\s*\n([\t]*)[\t]([ ]*)(.*)\);/atomic_add($1,\n$2   $4);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+    
+    elif [ "$2" == "lio_dev_info" ]; then
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_info\s*\(\s*(\w+)(.*);/dev_info(\&$1->pci_dev->dev$2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*);/dev_info(\&$1->pci_dev->dev$2\n$3 $5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_info(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_info(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8\n$9 $11;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+       perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_info(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8\n$9 $11\n$12 $14;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+       perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_info(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8\n$9 $11\n$12 $14\n$15 $17;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        return
+    elif [ "$2" == "lio_dev_warn" ]; then
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_warn\s*\(\s*(\w+)(.*);/dev_warn(\&$1->pci_dev->dev$2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_warn\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*);/dev_warn(\&$1->pci_dev->dev$2\n$3 $5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_warn\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_warn(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_warn\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_warn(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8\n$9 $11;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+	perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_warn\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_warn(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8\n$9 $11\n$12 $14;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+
+    elif [ "$2" == "lio_dev_err" ]; then
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_err\s*\(\s*(\w+)(.*);/dev_err(\&$1->pci_dev->dev$2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_err\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*);/dev_err(\&$1->pci_dev->dev$2\n$3$5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_err\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_err(\&$1->pci_dev->dev$2\n$3$5\n$6$8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_err\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_err(\&$1->pci_dev->dev$2\n$3$5\n$6$8\n$9$11;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        return
+
+    elif [ "$2" == "lio_dev_dbg" ]; then
+
+   	perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_dbg\s*\(\s*(\w+)(.*);/dev_dbg(\&$1->pci_dev->dev$2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_dbg\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*);/dev_dbg(\&$1->pci_dev->dev$2\n$3$5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_dbg\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_dbg(\&$1->pci_dev->dev$2\n$3$5\n$6$8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_dbg\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_dbg(\&$1->pci_dev->dev$2\n$3$5\n$6$8\n$9$11;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+	
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_dbg\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_dbg(\&$1->pci_dev->dev$2\n$3$5\n$6$8\n$9$11\n$12$14;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_dbg\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_dbg(\&$1->pci_dev->dev$2\n$3$5\n$6$8\n$9$11\n$12$14\n$15$17;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+
+    elif [ "$2" == "lio_info" ]; then
+        perl -pe 's/lio_info\s*\(\s*(\w+),\s*(\w+),/lio_info($1, $2, $1->netdev,/' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_info\s*\(\s*(\w+)(.*);/netif_info($1$2;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*);/netif_info($1$2\n$3$4  $5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/netif_info($1$2\n$3$4  $5\n$6$7  $8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/netif_info($1$2\n$3$4  $5\n$6$7  $8\n$9$10  $11;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_info\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/netif_info($1$2\n$3$4  $5\n$6$7  $8\n$9$10  $11\n$12$13 $14;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        return
+    elif [ "$2" == "lio_print_hex_dump_bytes" ]; then
+        perl -pe 's/([\t]*)lio_print_hex_dump_bytes\s*\(\s*(.*)/$1lio_print_hex_dump_bytes(\"\", DUMP_PREFIX_ADDRESS,\n$1\t\t     $2/' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)lio_print_hex_dump_bytes\s*\(\s*(.*)\n([\t]*)([ ]*)(.*);/$1print_hex_dump_bytes($2\n$1\t\t     $5;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+
+        perl -e 'undef $/; $s = <>; $s =~ s/([\t]*)lio_print_hex_dump_bytes\s*\(\s*(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/$1print_hex_dump_bytes($2\n$1\t\t     $5\n$1\t\t     $8;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+
+	elif [ "$2" == "cavium_set_pci_flr" ]; then
+        perl -e 'undef $/; $s = <>; $s =~ s/cavium_set_pci_flr\s*\((.*)\s*\n([\t]*)[\t]([ ]*)(.*)\);/pcie_capability_set_word(\n$2	$4,\n$2	PCI_EXP_DEVCTL, PCI_EXP_DEVCTL_BCR_FLR);/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+        return
+
+	elif [ "$2" == "lio_dev_notice" ]; then
+
+        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_notice\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_notice(\&$1->pci_dev->dev$2\n$3   $5\n$6   $8\n$9   $11;/g; print $s' $1 > $1.temp1
+        mv -f $1.temp1 $1
+#        perl -e 'undef $/; $s = <>; $s =~ s/lio_dev_notice\s*\(\s*(\w+)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*)\n([\t]*)([ ]*)(.*);/dev_notice(\&$1->pci_dev->dev$2\n$3 $5\n$6 $8\n$9 $11;/g; print $s' $1 > $1.temp1
+#        mv -f $1.temp1 $1
+	return	
+
+    fi
+    
+    #
+    # Execute pattern replace in file
+    #
+    # We do this in two passes, one with parenthetical argument, and one without.
+    # This allows parethetical constructs to be removed before we process simple word
+    # macros.
+    #
+     
+    # echo Will execute: sed "s/$2(\(.*\))/$3(\1)/" $1
+    sed "s/$2(\(.*\))/$3(\1)/g" $1 > $1.temp1
+    sed "s/$2/$3/g" $1.temp1 > $1.temp2
+    mv -f $1.temp2 $1
+    rm -f $1.temp1
+
+}
+
+function replaceinfiles {
+
+    # find .c and .h files in tree 1
+    find $3 -name "*.[ch]" > replacekallocall_temp1
+    
+    #
+    # Substitute in each file
+    #
+    local filename="replacekallocall_temp1"
+    while read -r line
+    do
+        local name=$line
+    # cut down on output, only output dots
+    #    echo Processing file: $name
+         echo -n "."
+        #./replace $name $1 $2
+        replacename $name $1 $2
+    done < "$filename"
+    
+    rm -f replacekallocall_temp1
+
+}
+
+#
+# Check parameter exists, use present directory if not
+#
+filename="$1"
+if [ -z "$1" ]; then
+    filename="."
+fi
+
+#
+# Check root directory exists
+#
+if [ ! -d "$filename" ]; then
+   echo "Root directory file $filename does not exist"
+   exit 1
+fi
+
+#
+# Perform individual replacements
+#
+replaceinfiles __CVM_FILE__                      __FILE__                        $filename
+replaceinfiles __CVM_FUNCTION__                  __func__                        $filename
+replaceinfiles __CVM_LINE__                      __LINE__                        $filename
+replaceinfiles __CAVIUM_MEM_ATOMIC               GFP_ATOMIC                      $filename
+replaceinfiles __CAVIUM_MEM_GENERAL              GFP_KERNEL                      $filename
+replaceinfiles CAVIUM_PAGE_SIZE                  PAGE_SIZE                       $filename
+replaceinfiles cavium_flush_write                wmb                             $filename
+replaceinfiles cavium_sys_flush_write            mmiowb                          $filename
+replaceinfiles cavium_get_cpu_count              num_online_cpus                 $filename
+replaceinfiles cavium_cpu_to_node                cpu_to_node                     $filename
+replaceinfiles cavium_jiffies                    jiffies                         $filename
+replaceinfiles CAVIUM_TICKS_PER_SEC              HZ                              $filename
+replaceinfiles cavium_msecs_to_jiffies           msecs_to_jiffies                $filename
+replaceinfiles cavium_mdelay                     mdelay                          $filename
+replaceinfiles cavium_udelay                     udelay                          $filename
+replaceinfiles cavium_kmalloc                 	 kmalloc                         $filename
+replaceinfiles cavium_kmemdup                 	 kmemdup                         $filename
+replaceinfiles cavium_kfree	                 kfree                           $filename
+replaceinfiles cavium_vmalloc_node               vmalloc_node                    $filename
+replaceinfiles cavium_vmalloc                    vmalloc                         $filename
+replaceinfiles cavium_vzalloc_node               vzalloc_node                    $filename
+replaceinfiles cavium_vzalloc                    vzalloc                         $filename
+replaceinfiles cavium_vfree                      vfree                           $filename
+replaceinfiles cavium_memcpy                     memcpy                          $filename
+replaceinfiles cavium_memset                     memset                          $filename
+replaceinfiles cavium_memcmp                     memcmp                          $filename
+replaceinfiles cavium_strncpy                    strncpy                          $filename
+replaceinfiles cavium_strncmp                    strncmp                         $filename
+replaceinfiles cavium_strncat                    strncat                         $filename
+replaceinfiles cavium_strnlen                    strnlen                         $filename
+replaceinfiles cavium_strlen                     strlen                          $filename
+replaceinfiles cavium_snprintf                   snprintf                        $filename
+replaceinfiles cavium_timespec                   timespec64                      $filename
+replaceinfiles cavium_getnstimeofday             getnstimeofday64                $filename
+replaceinfiles cavium_sleep_timeout_cond         sleep_timeout_cond              $filename
+replaceinfiles cavium_sleep_timeout              schedule_timeout_uninterruptible $filename
+replaceinfiles cavium_sleep_cond                 sleep_cond                      $filename
+replaceinfiles cavium_sleep_atomic_cond          sleep_atomic_cond               $filename
+replaceinfiles cavium_atomic_set                 atomic_set                      $filename
+replaceinfiles cavium_atomic_read                atomic_read                     $filename
+replaceinfiles cavium_atomic_inc                 atomic_inc                      $filename
+replaceinfiles cavium_atomic_add                 atomic_add                      $filename
+replaceinfiles cavium_atomic_dec                 atomic_dec                      $filename
+replaceinfiles cavium_atomic_sub                 atomic_sub                      $filename
+replaceinfiles cavium_atomic_cmpxchg             atomic_cmpxchg                  $filename
+replaceinfiles OCTEON_READ32                     readl                           $filename
+replaceinfiles OCTEON_WRITE32                    writel                          $filename
+replaceinfiles OCTEON_READ16                     readw                           $filename
+replaceinfiles OCTEON_WRITE16                    writew                          $filename
+replaceinfiles OCTEON_READ8                      readb                           $filename
+replaceinfiles OCTEON_WRITE8                     writeb                          $filename
+replaceinfiles OCTEON_READ64                     readq                           $filename
+replaceinfiles OCTEON_WRITE64                    writeq                          $filename
+replaceinfiles CAVIUM_DMA_FROM_DEVICE            DMA_FROM_DEVICE                 $filename
+replaceinfiles CAVIUM_DMA_TO_DEVICE              DMA_TO_DEVICE                   $filename
+replaceinfiles recv_buf_put                      skb_put                         $filename
+replaceinfiles recv_buf_reserve                  skb_reserve                     $filename
+replaceinfiles recv_buffer_push                  skb_push                        $filename
+replaceinfiles recv_buffer_pull                  skb_pull                        $filename
+replaceinfiles cavium_spin_lock_init             spin_lock_init                  $filename
+replaceinfiles cavium_spin_trylock_init          spin_lock_init                  $filename
+replaceinfiles cavium_spin_lock_softirqsave      spin_lock_bh                    $filename
+replaceinfiles cavium_spin_unlock_softirqrestore spin_unlock_bh                  $filename
+replaceinfiles cavium_spin_lock_irqsave          spin_lock_irqsave               $filename
+replaceinfiles cavium_spin_unlock_irqrestore     spin_unlock_irqrestore          $filename
+replaceinfiles cavium_spin_lock                  spin_lock                       $filename
+replaceinfiles cavium_spin_unlock                spin_unlock                     $filename
+replaceinfiles cavium_spin_trylock               spin_trylock                    $filename
+replaceinfiles cavium_spin_tryunlock             spin_unlock                     $filename
+replaceinfiles cavium_interrupt_spin_lock_irqsave spin_lock_irqsave              $filename
+replaceinfiles cavium_interrupt_spin_unlock_irqrestore spin_unlock_irqrestore    $filename
+replaceinfiles cavium_interrupt_spin_lock        spin_lock                       $filename
+replaceinfiles cavium_interrupt_spin_unlock      spin_unlock                     $filename
+replaceinfiles cavium_spin_trylock_softirqsave   spin_trylock_bh                 $filename
+replaceinfiles cavium_spin_trylock               spin_trylock                    $filename
+replaceinfiles cavium_init_wait_channel          init_waitqueue_head             $filename
+replaceinfiles cavium_init_wait_entry            init_waitqueue_entry            $filename
+replaceinfiles cavium_add_to_waitq               add_wait_queue                  $filename
+replaceinfiles cavium_remove_from_waitq          remove_wait_queue               $filename
+replaceinfiles cavium_check_timeout              time_after                      $filename
+replaceinfiles cavium_cpu_to_be64s               cpu_to_be64s                    $filename
+replaceinfiles cavium_cpu_to_be64                cpu_to_be64                     $filename
+replaceinfiles cavium_cpu_to_be32                cpu_to_be32                     $filename
+replaceinfiles cavium_cpu_to_be16                cpu_to_be16                     $filename
+replaceinfiles cavium_be64_to_cpu                be64_to_cpu                     $filename
+replaceinfiles cavium_be32_to_cpu                be32_to_cpu                     $filename
+replaceinfiles cavium_be16_to_cpu                be16_to_cpu                     $filename
+replaceinfiles cavium_crc32                      crc32                           $filename
+replaceinfiles cavium_strtol                     kstrtol                         $filename
+replaceinfiles cavium_proc_create_data           proc_create_data                $filename
+replaceinfiles OCTEON_READ_PCI_CONFIG            pci_read_config_dword           $filename
+replaceinfiles OCTEON_WRITE_PCI_CONFIG           pci_write_config_dword          $filename
+replaceinfiles cvm_intr_return_t                 irqreturn_t                     $filename
+replaceinfiles CVM_INTR_HANDLED                  IRQ_HANDLED                     $filename
+replaceinfiles CVM_INTR_NONE                     IRQ_NONE                        $filename
+replaceinfiles cavium_spinlock_t                 spinlock_t                      $filename
+replaceinfiles cavium_spintrylock_t              spinlock_t                      $filename
+replaceinfiles cavium_atomic_t                   atomic_t                        $filename
+replaceinfiles cavium_volatile_t 		 ""                        	 $filename
+replaceinfiles cavium_volatile_u32		 u32                      	 $filename
+replaceinfiles cavium_volatile_u64 		 u64                      	 $filename
+replaceinfiles cavium_wait_channel               wait_queue_head_t               $filename
+replaceinfiles cavium_wait_entry                 wait_queue_entry_t              $filename
+replaceinfiles cavium_netbuf                     sk_buff                         $filename
+replaceinfiles cavium_pci_device                 pci_dev                         $filename
+replaceinfiles cavium_delayed_work               delayed_work                    $filename
+replaceinfiles cavium_workqueue                  workqueue_struct                $filename
+replaceinfiles cavium_work                       work_struct                     $filename
+replaceinfiles cavium_net_device                 net_device                      $filename
+replaceinfiles cavium_list_head	                 list_head	                 $filename
+replaceinfiles CAVIUM_LIST_HEAD_INIT             LIST_HEAD_INIT                  $filename
+replaceinfiles CAVIUM_LIST_HEAD                  LIST_HEAD                       $filename
+replaceinfiles CAVIUM_INIT_LIST_HEAD             INIT_LIST_HEAD                  $filename
+replaceinfiles CAVIUM_LIST_EMPTY             	 list_empty                  	 $filename
+replaceinfiles CAVIUM_LIST_ADD_HEAD              list_add                        $filename
+replaceinfiles CAVIUM_LIST_ADD_TAIL              list_add_tail                   $filename
+replaceinfiles CAVIUM_LIST_DEL                   list_del                        $filename
+replaceinfiles CAVIUM_LIST_FOR_EACH_SAFE         list_for_each_safe              $filename
+replaceinfiles CAVIUM_LIST_FOR_EACH              list_for_each                   $filename
+replaceinfiles CAVIUM_LIST_FIRST_ENTRY           list_first_entry                $filename
+replaceinfiles cavium_create_workqueue           create_workqueue                $filename
+replaceinfiles cavium_alloc_workqueue            alloc_workqueue                 $filename
+replaceinfiles cavium_destroy_workqueue          destroy_workqueue               $filename
+replaceinfiles cavium_flush_workqueue            flush_workqueue                 $filename
+replaceinfiles cavium_queue_delayed_work         queue_delayed_work              $filename
+replaceinfiles cavium_mod_delayed_work           mod_delayed_work                $filename
+replaceinfiles cavium_schedule_delayed_work      schedule_delayed_work           $filename
+replaceinfiles cavium_cancel_delayed_work        cancel_delayed_work             $filename
+replaceinfiles cavium_cancel_delayed_work_sync   cancel_delayed_work_sync        $filename
+replaceinfiles CAVIUM_INIT_DELAYED_WORK          INIT_DELAYED_WORK               $filename
+replaceinfiles __CAVIUM_BYTE_ORDER               __BYTE_ORDER                    $filename
+replaceinfiles __CAVIUM_LITTLE_ENDIAN            __LITTLE_ENDIAN                 $filename
+replaceinfiles __CAVIUM_LITTLE_ENDIAN_BITFIELD   __LITTLE_ENDIAN_BITFIELD        $filename
+replaceinfiles __CAVIUM_BIG_ENDIAN               __BIG_ENDIAN                    $filename
+replaceinfiles __CAVIUM_BIG_ENDIAN_BITFIELD      __BIG_ENDIAN_BITFIELD           $filename
+replaceinfiles UNUSED                            UNUSED                          $filename
+replaceinfiles cavium_kthread_create             kthread_create                  $filename
+replaceinfiles cavium_wake_up_process            wake_up_process                 $filename
+replaceinfiles cavium_kthread_stop               kthread_stop                    $filename
+replaceinfiles cavium_kthread_bind               kthread_bind                    $filename
+replaceinfiles cavium_kthread_should_stop        kthread_should_stop             $filename
+replaceinfiles cavium_dma_addr_t                 dma_addr_t                      $filename
+replaceinfiles cavium_iomem                 	 __iomem                      	 $filename
+replaceinfiles cavium_napi_struct                napi_struct                     $filename
+replaceinfiles cavium_dma_sync_single_for_cpu    dma_sync_single_for_cpu         $filename
+replaceinfiles cavium_pr_err                     pr_err                          $filename
+replaceinfiles cavium_pr_info                    pr_info                         $filename
+replaceinfiles lio_dev_info                      dev_info                        $filename
+replaceinfiles lio_dev_warn                      dev_warn                        $filename
+replaceinfiles lio_dev_err                       dev_err                         $filename
+replaceinfiles lio_dev_dbg                       dev_dbg                         $filename
+replaceinfiles lio_dev_notice                    dev_notice                      $filename
+replaceinfiles cavium_dev_ptr                    cavium_dev_ptr                  $filename
+replaceinfiles lio_info                          netif_info                      $filename
+replaceinfiles lio_print_hex_dump_bytes          print_hex_dump_bytes            $filename
+replaceinfiles cavium_dev_to_node                dev_to_node                     $filename
+replaceinfiles cavium_set_dev_node               set_dev_node                    $filename
+replaceinfiles cavium_test_and_set_bit           test_and_set_bit                $filename
+replaceinfiles cavium_test_and_clear_bit         test_and_clear_bit              $filename
+replaceinfiles cavium_pci_reset_function         pci_reset_function              $filename
+replaceinfiles cavium_cpumask_set_cpu            cpumask_set_cpu                 $filename
+replaceinfiles cavium_get_present_cpu_count      num_present_cpus                $filename
+replaceinfiles cavium_cpumask                    cavium_cpumask                  $filename
+replaceinfiles cavium_disable_irq_nosync         disable_irq_nosync              $filename
+replaceinfiles cavium_enable_irq                 enable_irq                      $filename
+replaceinfiles BUG_ON                            WARN_ON                         $filename
+replaceinfiles BUG                               WARN_ON                         $filename
+replaceinfiles cavium_write_once64               WRITE_ONCE                      $filename
+replaceinfiles cavium_write_once                 WRITE_ONCE                      $filename
+replaceinfiles cavium_read_once64                READ_ONCE                       $filename
+replaceinfiles cavium_read_once                  READ_ONCE                       $filename
+replaceinfiles LIO_STR				 __stringify			 $filename
+replaceinfiles cavium_set_pci_flr                pcie_capability_set_word        $filename
+replaceinfiles cavium_lower_pow                  rounddown_pow_of_two            $filename
+replaceinfiles CVM_MIN_T                         min_t                           $filename
+replaceinfiles cavium_min_t                      min_t                           $filename
+replaceinfiles CVM_MIN                           min                             $filename
+replaceinfiles cavium_call_single_data           call_single_data                $filename
+replaceinfiles SIZEOF_FIELD                      FIELD_SIZEOF                    $filename
+replaceinfiles CAVIUM_LIST_NEXT                  CAVIUM_LIST_NEXT                $filename
+replaceinfiles cavium_u64_to_ether_addr          u64_to_ether_addr               $filename
+echo

@@ -1,0 +1,85 @@
+WHAT:
+
+This directory contains the define macro processor scripts
+
+WHY:
+
+It is in our interest to maintain as much code in common between our Linux and windows
+drivers as possible.
+
+To upstream drivers to the Linux Kernel repository, we don't believe that many of the
+adaptions made to the source code that is common between Linux and Windows meets the
+upstreaming requirements for Linux. This means that the linux upstream core must be
+modified automatically before upstreaming the driver.
+
+We don't believe Windows has this issue. Thus, the Windows version of the code is the
+universal version, that is, with the original macros and ifdefs left intact. It will
+be functional for both linux and windows, and in fact this should be verified
+regularly.
+
+HOW:
+
+There are two facillities used to automatically edit the code. They are:
+
+1. Changing #ifdef statements to normal code. This is done by removing all #ifdef targets
+   that have the prefix CAVIUM_ONLY.
+
+2. Replacing macro definitions with their Linux equivalents.
+
+Both of these are effectively performing the same job that the C/C++ preprocessor does,
+but doing that selectively.
+
+TOOLS:
+
+For #ifdef editing, we use the off the shelf tool unifdef (see man page).
+
+For select macro evaluation, the scripts in this directory execute this job.
+
+SCRIPTS:
+
+create_linux_upstreamable
+
+Expects the environmental variable LINUX_HOST_DRIVER_SRC and LINUX_HOST_DRIVER_SRC_UPSTREAM to be
+set in the environment. The first contains the current path of the Linux driver source tree.
+the second contains the path of where the upstream copy is to be placed. Any previous contents of
+upstream tree are removed -- the upstream tree is entirely derived from the normal tree.
+The entire linux driver source is then copied to the upstream tree. Then all of the macros that
+need to be removed from the upstream tree are removed and replaced by their equivalent Linux
+content.
+
+Note this command should be executed from the scripts directory. It is designed to be execute
+by a Make.
+
+replacemacros [root_directory]
+
+Expects the root directory of the source to change. All .c and .h files in the target tree are
+replaced with their Linux equivalents. Most of the macros are of the simple form:
+
+#define original_macroname(parameters) replacement_macro_name(parameters)
+
+or
+
+#define original_macroname replacement_macroname
+
+In the first form, all of the contents of the parameter list between the MAXIMUM length 
+of characters between parenthesis are moved to the new macro definition.
+
+If the macro does not fit into one of the simple forms listed above, an exception is written
+into the replacemacros script itself.
+
+In addition replacemacros will skip files that define macros, to prevent recursive definition
+issues. The files are in an exception list in the source.
+
+USAGE:
+
+Use the following make targets:
+
+make linux_upstream
+
+Executes the create_linux_upstreamable script above.
+
+make host_drv_upstream
+
+This is the same as a host_drv make, but takes place in the Linux upstreamable copy, and does a
+make clean first, always. Then, the upstreamable driver source is tarballed for inclusion in
+kernel.org.
